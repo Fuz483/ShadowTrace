@@ -1,0 +1,5 @@
+psutil
+pulsectl
+colorama
+python-whois
+customtkinter
