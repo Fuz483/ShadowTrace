@@ -14,7 +14,7 @@
 ## 📸 Скриншоты
 
 ### GUI-режим
-<img width="1121" height="844" alt="image" src="https://github.com/user-attachments/assets/f37f4eb7-6728-40e0-ab2e-1cdedd73a28c" />
+<img width="1122" height="844" alt="image" src="https://github.com/user-attachments/assets/8cd04377-063f-4b2c-aa29-8f34f16338b5" />
 
 ---
 
