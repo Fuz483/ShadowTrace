@@ -94,9 +94,11 @@ class ShadowTraceGUI:
         self.export_button.pack(side="left", padx=5)
 
     def _create_main_area(self):
+        """Создаёт основную область с вкладками."""
         self.tabview = ctk.CTkTabview(self.window)
         self.tabview.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
 
+        # Вкладка "Алерты"
         self.tabview.add("🚨 Алерты")
         self.tabview.tab("🚨 Алерты").grid_columnconfigure(0, weight=1)
         self.tabview.tab("🚨 Алерты").grid_rowconfigure(0, weight=1)
@@ -108,6 +110,7 @@ class ShadowTraceGUI:
         )
         self.alerts_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
+        # Вкладка "Сеть"
         self.tabview.add("🌐 Сеть")
         self.tabview.tab("🌐 Сеть").grid_columnconfigure(0, weight=1)
         self.tabview.tab("🌐 Сеть").grid_rowconfigure(0, weight=1)
@@ -119,6 +122,7 @@ class ShadowTraceGUI:
         )
         self.network_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
+        # Вкладка "Аудио"
         self.tabview.add("🎤 Аудио")
         self.tabview.tab("🎤 Аудио").grid_columnconfigure(0, weight=1)
         self.tabview.tab("🎤 Аудио").grid_rowconfigure(0, weight=1)
@@ -130,6 +134,19 @@ class ShadowTraceGUI:
         )
         self.audio_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
+        # Вкладка "Камера" (НОВАЯ)
+        self.tabview.add("📷 Камера")
+        self.tabview.tab("📷 Камера").grid_columnconfigure(0, weight=1)
+        self.tabview.tab("📷 Камера").grid_rowconfigure(0, weight=1)
+
+        self.camera_text = ctk.CTkTextbox(
+            self.tabview.tab("📷 Камера"),
+            font=ctk.CTkFont(size=12, family="Consolas"),
+            wrap="none"
+        )
+        self.camera_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+        # Вкладка "Whitelist"
         self.tabview.add("✅ Whitelist")
         self.tabview.tab("✅ Whitelist").grid_columnconfigure(0, weight=1)
         self.tabview.tab("✅ Whitelist").grid_rowconfigure(0, weight=1)
@@ -141,6 +158,7 @@ class ShadowTraceGUI:
         )
         self.whitelist_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
+        # Кнопки управления белым списком
         whitelist_buttons = ctk.CTkFrame(self.tabview.tab("✅ Whitelist"), fg_color="transparent")
         whitelist_buttons.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
 
@@ -202,7 +220,9 @@ class ShadowTraceGUI:
         scan_thread.start()
 
     def _scan_worker(self):
+        """Рабочий поток для сканирования."""
         try:
+            # Сетевое сканирование
             self.update_queue.put(("status", "● Сканирование сети...", "#FFA500"))
             network_connections = self.analyzer.network_scanner.scan()
             network_pids = self.analyzer.network_scanner.get_unique_pids()
@@ -210,74 +230,121 @@ class ShadowTraceGUI:
             self.network_connections = network_connections
             self.update_queue.put(("network", network_connections))
 
-            self.update_queue.put(("status", "● Сканирование аудио...", "#FFA500"))
-            audio_pids = self.analyzer.audio_detector.scan()
+            # Аудио сканирование
+            if self.analyzer.audio_detector:
+                self.update_queue.put(("status", "● Сканирование аудио...", "#FFA500"))
+                audio_pids = self.analyzer.audio_detector.scan()
+                self.audio_pids = audio_pids
+                self.update_queue.put(("audio", audio_pids))
 
-            self.audio_pids = audio_pids
-            self.update_queue.put(("audio", audio_pids))
+                # Безопасно получаем список процессов
+                if hasattr(self.analyzer.audio_detector, 'get_all_audio_processes'):
+                    audio_processes = self.analyzer.audio_detector.get_all_audio_processes()
+                    self.update_queue.put(("audio_processes", audio_processes))
+            else:
+                self.audio_pids = set()
+                self.update_queue.put(("audio", set()))
 
+            # Сканирование камеры
+            if self.analyzer.camera_detector:
+                self.update_queue.put(("status", "● Сканирование камеры...", "#FFA500"))
+                camera_pids = self.analyzer.camera_detector.scan()
+                self.camera_pids = camera_pids
+                self.update_queue.put(("camera", camera_pids))
+
+                # Безопасно получаем список процессов
+                if hasattr(self.analyzer.camera_detector, 'get_all_camera_processes'):
+                    camera_processes = self.analyzer.camera_detector.get_all_camera_processes()
+                    self.update_queue.put(("camera_processes", camera_processes))
+            else:
+                self.camera_pids = set()
+                self.update_queue.put(("camera", set()))
+
+            # Корреляция
             self.update_queue.put(("status", "● Анализ результатов...", "#FFA500"))
-
-            suspicious_pids = network_pids & audio_pids
-
-            alerts = []
-            for pid in suspicious_pids:
-                process_name = self._get_process_name(pid)
-
-                if process_name and process_name.lower() in self.analyzer.whitelist:
-                    continue
-
-                pid_connections = [c for c in network_connections if c['pid'] == pid]
-
-                alert = {
-                    'timestamp': datetime.now().isoformat(),
-                    'pid': pid,
-                    'name': process_name,
-                    'exe': pid_connections[0]['exe'] if pid_connections else 'unknown',
-                    'connections': pid_connections,
-                    'remote_ips': list({c['remote_ip'] for c in pid_connections}),
-                }
-                alerts.append(alert)
+            alerts = self.analyzer.scan()
 
             self.current_alerts = alerts
             self.update_queue.put(("alerts", alerts))
+            self.update_queue.put(("stats", self.analyzer.get_stats()))
 
+            # Обновляем статус
             if alerts:
-                self.update_queue.put(("status", f"⚠️ Найдено {len(alerts)} подозрительных процессов", "#FF0000"))
+                critical = sum(1 for a in alerts if a.get('threat_level') == 'CRITICAL')
+                high = sum(1 for a in alerts if a.get('threat_level') == 'HIGH')
+
+                if critical > 0:
+                    status_text = f"⚠️ КРИТИЧЕСКАЯ УГРОЗА! Найдено {critical} процессов"
+                    status_color = "#FF0000"
+                elif high > 0:
+                    status_text = f"⚠️ Найдено {len(alerts)} подозрительных процессов"
+                    status_color = "#FFA500"
+                else:
+                    status_text = f"⚠️ Найдено {len(alerts)} подозрительных процессов"
+                    status_color = "#FF6B6B"
+
+                self.update_queue.put(("status", status_text, status_color))
             else:
-                self.update_queue.put(("status", "✅ Подозрительной активности не обнаружено", "#00FF00"))
+                self.update_queue.put(("status", "✅ Подозрительной активности не обнаружено", "#50C878"))
 
         except Exception as e:
             self.update_queue.put(("error", str(e)))
+            import traceback
+            traceback.print_exc()
         finally:
             self.update_queue.put(("scan_complete", None))
-
     def _process_queue(self):
+        """Обрабатывает очередь обновлений UI."""
         try:
             while True:
                 msg = self.update_queue.get_nowait()
                 msg_type = msg[0]
 
-                if msg_type == "status":
-                    self.status_label.configure(text=msg[1], text_color=msg[2])
+                try:
+                    if msg_type == "status":
+                        self.status_label.configure(text=msg[1], text_color=msg[2])
 
-                elif msg_type == "network":
-                    self._display_network_connections(msg[1])
+                    elif msg_type == "network":
+                        self._display_network_connections(msg[1])
 
-                elif msg_type == "audio":
-                    self._display_audio_pids(msg[1])
+                    elif msg_type == "audio":
+                        self._display_audio_pids(msg[1])
 
-                elif msg_type == "alerts":
-                    self._display_alerts(msg[1])
+                    elif msg_type == "audio_processes":
+                        # Детальное отображение аудио-процессов (можно добавить позже)
+                        pass
 
-                elif msg_type == "error":
-                    self.status_label.configure(text=f"❌ Ошибка: {msg[1]}", text_color="#FF0000")
+                    elif msg_type == "camera":
+                        # Простое отображение PID
+                        pass
 
-                elif msg_type == "scan_complete":
-                    self.scanning_active = False
-                    self.scan_button.configure(state="normal", text="🔍 Сканировать")
-                    self.stop_button.configure(state="disabled", fg_color="gray")
-                    self.time_label.configure(text=f"Последнее сканирование: {datetime.now().strftime('%H:%M:%S')}")
+                    elif msg_type == "camera_processes":
+                        self._display_camera_pids(msg[1])
+
+                    elif msg_type == "alerts":
+                        self._display_alerts(msg[1])
+
+                    elif msg_type == "stats":
+                        stats = msg[1]
+                        self.time_label.configure(
+                            text=f"Сеть: {stats['network_connections']} | "
+                                 f"🎤: {stats['audio_processes']} | "
+                                 f"📷: {stats['camera_processes']} | "
+                                 f"🚨: {stats['alerts']}"
+                        )
+
+                    elif msg_type == "error":
+                        self.status_label.configure(text=f"❌ Ошибка: {msg[1]}", text_color="#FF0000")
+
+                    elif msg_type == "scan_complete":
+                        self.scanning_active = False
+                        self.scan_button.configure(state="normal", text="🔍 Сканировать")
+                        self.stop_button.configure(state="disabled", fg_color="gray")
+
+                except Exception as e:
+                    print(f"[DEBUG] Ошибка в обработчике UI ({msg_type}): {e}")
+                    import traceback
+                    traceback.print_exc()
 
         except queue.Empty:
             pass
@@ -285,6 +352,7 @@ class ShadowTraceGUI:
             self.window.after(100, self._process_queue)
 
     def _display_alerts(self, alerts: List[Dict[str, Any]]):
+        """Отображает алерты в текстовом поле."""
         self.alerts_text.delete("1.0", "end")
 
         if not alerts:
@@ -292,14 +360,52 @@ class ShadowTraceGUI:
             self.alerts_text.insert("end", "\nЭто хорошо! Ваша система выглядит чистой.")
             return
 
+        # Статистика по уровням угроз
+        critical = sum(1 for a in alerts if a['threat_level'] == 'CRITICAL')
+        high = sum(1 for a in alerts if a['threat_level'] == 'HIGH')
+        medium = sum(1 for a in alerts if a['threat_level'] == 'MEDIUM')
+        low = sum(1 for a in alerts if a['threat_level'] == 'LOW')
+
         self.alerts_text.insert("end", f"⚠️ НАЙДЕНО ПОДОЗРИТЕЛЬНЫХ ПРОЦЕССОВ: {len(alerts)}\n")
-        self.alerts_text.insert("end", "=" * 70 + "\n\n")
+        self.alerts_text.insert("end",
+                                f"   🔴 Критических: {critical}  🟡 Высоких: {high}  🔵 Средних: {medium}  🟢 Низких: {low}\n")
+        self.alerts_text.insert("end", "=" * 80 + "\n\n")
+
+        threat_colors = {
+            'CRITICAL': '#FF0000',
+            'HIGH': '#FFA500',
+            'MEDIUM': '#4A90D9',
+            'LOW': '#50C878',
+        }
 
         for i, alert in enumerate(alerts, 1):
+            color = threat_colors.get(alert['threat_level'], '#FFFFFF')
+
             self.alerts_text.insert("end", f"[{i}] ")
             self.alerts_text.insert("end", f"{alert['name']} ", "alert_name")
             self.alerts_text.insert("end", f"(PID: {alert['pid']})\n")
-            self.alerts_text.insert("end", f"    📁 Файл: {alert['exe']}\n")
+
+            # Уровень угрозы с цветом
+            self.alerts_text.insert("end", f"    🚨 Уровень угрозы: ")
+            self.alerts_text.insert("end", f"{alert['threat_level_name']}\n", ("threat", alert['threat_level']))
+
+            self.alerts_text.insert("end", f"    📁 Файл: {alert['exe']}\n", "dim")
+
+            # Активность
+            activities = []
+            if alert.get('has_audio'):
+                activities.append("🎤 Аудио")
+            if alert.get('has_camera'):
+                activities.append("📷 Камера")
+
+            if activities:
+                self.alerts_text.insert("end", f"    🔍 Активность: {', '.join(activities)}\n")
+
+            # Детали по DLL
+            if alert.get('camera_info') and alert['camera_info'].get('dlls'):
+                dlls = alert['camera_info']['dlls'][:3]
+                self.alerts_text.insert("end", f"    🎬 Видео-DLL: {', '.join(dlls)}\n", "dim")
+
             self.alerts_text.insert("end", f"    🌐 Удалённые адреса:\n")
 
             for conn in alert['connections']:
@@ -308,9 +414,14 @@ class ShadowTraceGUI:
 
             self.alerts_text.insert("end", "\n")
 
+        # Настройка тегов
         self.alerts_text.tag_config("alert_name", foreground="#FF6B6B")
         self.alerts_text.tag_config("dim", foreground="#666666")
+        self.alerts_text.tag_config("threat", foreground="#FF0000")
 
+        # Отдельные цвета для уровней угроз
+        for level, color in threat_colors.items():
+            self.alerts_text.tag_config(f"threat_{level}", foreground=color)
     def _display_network_connections(self, connections: List[Dict[str, Any]]):
         self.network_text.delete("1.0", "end")
 
@@ -349,6 +460,36 @@ class ShadowTraceGUI:
 
         self.audio_text.tag_config("process_name", foreground="#50C878")
         self.audio_text.tag_config("dim", foreground="#666666")
+
+    def _display_camera_pids(self, camera_processes: List[Dict[str, Any]]):
+        """Отображает процессы, использующие камеру."""
+        self.camera_text.delete("1.0", "end")
+
+        self.camera_text.insert("end", f"📷 ПРОЦЕССЫ С ВИДЕО-DLL: {len(camera_processes)}\n")
+        self.camera_text.insert("end", "=" * 70 + "\n\n")
+
+        for proc_info in sorted(camera_processes, key=lambda x: x['name']):
+            pid = proc_info['pid']
+            name = proc_info['name']
+            exe = proc_info['exe']
+            dlls = proc_info.get('dlls', [])
+
+            self.camera_text.insert("end", f"PID: {pid:<8} ")
+            self.camera_text.insert("end", f"{name}\n", "process_name")
+            self.camera_text.insert("end", f"     📁 {exe}\n", "dim")
+
+            if dlls:
+                self.camera_text.insert("end", f"     🎬 Загруженные DLL:\n", "dim")
+                for dll in dlls[:5]:  # Показываем первые 5
+                    self.camera_text.insert("end", f"        • {dll}\n", "dim")
+                if len(dlls) > 5:
+                    self.camera_text.insert("end", f"        ... и ещё {len(dlls) - 5}\n", "dim")
+
+            self.camera_text.insert("end", "\n")
+
+        # Настройка тегов
+        self.camera_text.tag_config("process_name", foreground="#FF6B6B")
+        self.camera_text.tag_config("dim", foreground="#666666")
 
     def _load_whitelist_display(self):
         self.whitelist_text.delete("1.0", "end")

@@ -1,5 +1,5 @@
 """
-Детектор использования аудиоустройств через анализ загруженных DLL.
+Детектор использования веб-камеры через анализ загруженных DLL.
 """
 import psutil
 from typing import Set, List, Optional, Dict, Any
@@ -7,22 +7,22 @@ from utils.helpers import safe_proc_call, is_system_process
 import config
 
 
-class AudioDetector:
-    """Обнаруживает процессы, потенциально использующие микрофон."""
+class CameraDetector:
+    """Обнаруживает процессы, потенциально использующие веб-камеру."""
 
     def __init__(self):
-        self.audio_pids: Set[int] = set()
-        self.audio_processes: List[Dict[str, Any]] = []  # ДОБАВЛЕНО
+        self.camera_pids: Set[int] = set()
+        self.camera_processes: List[Dict[str, Any]] = []
 
     def scan(self) -> Set[int]:
         """
-        Сканирует все процессы на наличие аудио-DLL.
+        Сканирует все процессы на наличие видео-DLL.
 
         Returns:
-            Множество PID процессов, загрузивших аудио-DLL.
+            Множество PID процессов, загрузивших видео-DLL.
         """
-        self.audio_pids = set()
-        self.audio_processes = []  # ДОБАВЛЕНО: очищаем список
+        self.camera_pids = set()
+        self.camera_processes = []
 
         for proc in psutil.process_iter(['pid', 'name']):
             try:
@@ -34,10 +34,10 @@ class AudioDetector:
                     continue
 
                 # Проверяем загруженные DLL
-                found_dlls = self._get_audio_dlls(proc)
+                found_dlls = self._get_camera_dlls(proc)
 
                 if found_dlls:
-                    self.audio_pids.add(pid)
+                    self.camera_pids.add(pid)
 
                     # Сохраняем детальную информацию
                     try:
@@ -45,7 +45,7 @@ class AudioDetector:
                     except:
                         exe = "unknown"
 
-                    self.audio_processes.append({
+                    self.camera_processes.append({
                         'pid': pid,
                         'name': name,
                         'exe': exe,
@@ -55,11 +55,11 @@ class AudioDetector:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        return self.audio_pids
+        return self.camera_pids
 
-    def _get_audio_dlls(self, proc: psutil.Process) -> List[str]:
+    def _get_camera_dlls(self, proc: psutil.Process) -> List[str]:
         """
-        Возвращает список аудио-DLL, загруженных в процесс.
+        Возвращает список видео-DLL, загруженных в процесс.
 
         Args:
             proc: объект процесса
@@ -78,7 +78,7 @@ class AudioDetector:
 
                 path_lower = mmap.path.lower()
 
-                for dll in config.AUDIO_DLLS:
+                for dll in config.CAMERA_DLLS:
                     if dll in path_lower:
                         # Извлекаем только имя файла из пути
                         dll_name = path_lower.split('\\')[-1]
@@ -92,23 +92,23 @@ class AudioDetector:
 
     def check_specific_pid(self, pid: int) -> bool:
         """
-        Проверяет конкретный PID на наличие аудио-DLL.
+        Проверяет конкретный PID на наличие видео-DLL.
 
         Args:
             pid: идентификатор процесса
 
         Returns:
-            True, если процесс использует аудио-DLL
+            True, если процесс использует видео-DLL
         """
         try:
             proc = psutil.Process(pid)
-            return len(self._get_audio_dlls(proc)) > 0
+            return len(self._get_camera_dlls(proc)) > 0
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
 
     def get_process_info(self, pid: int) -> Optional[Dict[str, Any]]:
         """
-        Возвращает детальную информацию о процессе с аудио.
+        Возвращает детальную информацию о процессе с камерой.
 
         Args:
             pid: идентификатор процесса
@@ -116,11 +116,11 @@ class AudioDetector:
         Returns:
             Словарь с информацией или None
         """
-        for proc_info in self.audio_processes:
+        for proc_info in self.camera_processes:
             if proc_info['pid'] == pid:
                 return proc_info
         return None
 
-    def get_all_audio_processes(self) -> List[Dict[str, Any]]:
-        """Возвращает список всех процессов, использующих аудио."""
-        return self.audio_processes
+    def get_all_camera_processes(self) -> List[Dict[str, Any]]:
+        """Возвращает список всех процессов, использующих камеру."""
+        return self.camera_processes
