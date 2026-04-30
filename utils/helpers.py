@@ -1,7 +1,6 @@
 import psutil
 from typing import Any, Callable, Optional
 
-
 def safe_proc_call(proc: psutil.Process,
                    method: Callable,
                    default: Any = None,

@@ -1,6 +1,3 @@
-"""
-Анализатор - коррелирует данные от сетевого сканера и аудио/видео детекторов.
-"""
 import json
 import os
 from typing import List, Dict, Any, Set
@@ -14,7 +11,6 @@ import config
 
 
 class ThreatLevel(Enum):
-    """Уровни угрозы."""
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -22,15 +18,7 @@ class ThreatLevel(Enum):
 
 
 class ShadowTraceAnalyzer:
-    """Главный анализатор ShadowTrace."""
-
     def __init__(self, scan_mode: str = "full"):
-        """
-        Инициализация анализатора.
-
-        Args:
-            scan_mode: Режим сканирования ('audio', 'camera', 'full')
-        """
         self.scan_mode = scan_mode
         self.network_scanner = NetworkScanner()
         self.audio_detector = AudioDetector() if scan_mode in ('audio', 'full') else None
@@ -38,7 +26,6 @@ class ShadowTraceAnalyzer:
         self.whitelist = self._load_whitelist()
         self.alerts: List[Dict[str, Any]] = []
 
-        # Статистика сканирования
         self.stats = {
             'network_connections': 0,
             'audio_processes': 0,
@@ -47,7 +34,6 @@ class ShadowTraceAnalyzer:
         }
 
     def _load_whitelist(self) -> Set[str]:
-        """Загружает белый список процессов из JSON-файла."""
         whitelist_path = config.WHITELIST_FILE
 
         os.makedirs(os.path.dirname(whitelist_path), exist_ok=True)
@@ -65,62 +51,38 @@ class ShadowTraceAnalyzer:
             return set(config.DEFAULT_WHITELIST['process_names'])
 
     def scan(self) -> List[Dict[str, Any]]:
-        """
-        Выполняет полное сканирование системы.
-
-        Returns:
-            Список алертов (подозрительных процессов).
-        """
-        print("[*] Сканирование сетевых соединений...")
         network_connections = self.network_scanner.scan()
         network_pids = self.network_scanner.get_unique_pids()
         self.stats['network_connections'] = len(network_connections)
-        print(f"[*] Найдено {self.stats['network_connections']} сетевых соединений")
-        print(f"[*] Уникальных PID с сетью: {len(network_pids)}")
 
-        # Множества для хранения PID
         audio_pids: Set[int] = set()
         camera_pids: Set[int] = set()
 
-        # Сканирование аудио
         if self.audio_detector:
-            print("[*] Сканирование аудио-активности...")
             audio_pids = self.audio_detector.scan()
             self.stats['audio_processes'] = len(audio_pids)
-            print(f"[*] Найдено {self.stats['audio_processes']} PID с аудио-DLL")
 
-        # Сканирование камеры
         if self.camera_detector:
-            print("[*] Сканирование видео-активности (веб-камера)...")
             camera_pids = self.camera_detector.scan()
             self.stats['camera_processes'] = len(camera_pids)
-            print(f"[*] Найдено {self.stats['camera_processes']} PID с видео-DLL")
 
-        # Формируем алерты
         self.alerts = []
 
-        # Обрабатываем каждый PID с сетевой активностью
         for pid in network_pids:
-            # Пропускаем системные процессы
             process_name = self._get_process_name_from_connections(pid, network_connections)
             if process_name and process_name.lower() in self.whitelist:
                 continue
 
-            # Определяем тип активности
             has_audio = pid in audio_pids
             has_camera = pid in camera_pids
 
-            # Если нет медиа-активности - пропускаем
             if not has_audio and not has_camera:
                 continue
 
-            # Определяем уровень угрозы
             threat_level = self._calculate_threat_level(has_audio, has_camera, pid)
 
-            # Собираем информацию о соединениях
             pid_connections = [c for c in network_connections if c['pid'] == pid]
 
-            # Дополнительная информация
             audio_info = None
             camera_info = None
 
@@ -146,7 +108,6 @@ class ShadowTraceAnalyzer:
             }
             self.alerts.append(alert)
 
-        # Сортируем по уровню угрозы
         threat_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
         self.alerts.sort(key=lambda x: threat_order.get(x['threat_level'], 4))
 
@@ -155,53 +116,35 @@ class ShadowTraceAnalyzer:
         return self.alerts
 
     def _calculate_threat_level(self, has_audio: bool, has_camera: bool, pid: int) -> ThreatLevel:
-        """
-        Рассчитывает уровень угрозы на основе активности.
-
-        Args:
-            has_audio: Использует ли процесс аудио
-            has_camera: Использует ли процесс камеру
-            pid: PID процесса
-
-        Returns:
-            Уровень угрозы
-        """
-        # Базовая оценка
         score = 0
 
-        # Медиа-активность
         if has_audio and has_camera:
-            score += 40  # Аудио + видео = очень подозрительно
+            score += 40
         elif has_camera:
-            score += 30  # Только камера
+            score += 30
         elif has_audio:
-            score += 20  # Только аудио
+            score += 20
 
-        # Проверяем расположение файла
         try:
             import psutil
             proc = psutil.Process(pid)
             exe = safe_proc_call(proc, proc.exe, "").lower()
 
-            # Временные папки
             if '\\temp\\' in exe or '\\appdata\\local\\temp\\' in exe:
                 score += 30
 
-            # AppData (не всегда плохо, но подозрительно)
             elif '\\appdata\\' in exe and '\\microsoft\\' not in exe:
                 score += 15
 
-            # Проверяем, есть ли окно (GUI)
             try:
                 if not proc.is_running():
-                    score += 10  # Фоновый процесс
+                    score += 10
             except:
                 pass
 
         except:
             pass
 
-        # Определяем уровень
         if score >= 60:
             return ThreatLevel.CRITICAL
         elif score >= 40:
@@ -212,14 +155,12 @@ class ShadowTraceAnalyzer:
             return ThreatLevel.LOW
 
     def _get_process_name_from_connections(self, pid: int, connections: List[Dict]) -> str:
-        """Извлекает имя процесса из данных о соединениях."""
         for conn in connections:
             if conn['pid'] == pid:
                 return conn['name']
         return f"PID_{pid}"
 
     def print_alerts(self):
-        """Выводит алерты в консоль."""
         if not self.alerts:
             print("\n[+] Подозрительной активности не обнаружено.")
             return
@@ -228,12 +169,11 @@ class ShadowTraceAnalyzer:
         print("=" * 80)
 
         for i, alert in enumerate(self.alerts, 1):
-            # Цветовой код в зависимости от уровня угрозы
             threat_colors = {
-                'CRITICAL': '\033[91m',  # Красный
-                'HIGH': '\033[93m',  # Жёлтый
-                'MEDIUM': '\033[94m',  # Синий
-                'LOW': '\033[92m',  # Зелёный
+                'CRITICAL': '\033[91m',
+                'HIGH': '\033[93m',
+                'MEDIUM': '\033[94m',
+                'LOW': '\033[92m',
             }
             reset_color = '\033[0m'
 
@@ -243,7 +183,6 @@ class ShadowTraceAnalyzer:
             print(f"    Уровень угрозы: {alert['threat_level_name']}")
             print(f"    Исполняемый файл: {alert['exe']}")
 
-            # Активность
             activities = []
             if alert['has_audio']:
                 activities.append("🎤 Аудио")
@@ -251,7 +190,6 @@ class ShadowTraceAnalyzer:
                 activities.append("📷 Камера")
             print(f"    Активность: {', '.join(activities)}")
 
-            # Детали по DLL
             if alert.get('audio_info') and alert['audio_info'].get('dlls'):
                 print(f"    Аудио-DLL: {', '.join(alert['audio_info']['dlls'][:3])}")
             if alert.get('camera_info') and alert['camera_info'].get('dlls'):
@@ -265,7 +203,6 @@ class ShadowTraceAnalyzer:
         print("\n" + "=" * 80)
 
     def save_alerts_to_log(self):
-        """Сохраняет алерты в лог-файл."""
         if not self.alerts:
             return
 
@@ -293,5 +230,4 @@ class ShadowTraceAnalyzer:
         print(f"[*] Алерты сохранены в {log_path}")
 
     def get_stats(self) -> Dict[str, int]:
-        """Возвращает статистику сканирования."""
         return self.stats

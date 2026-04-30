@@ -1,6 +1,3 @@
-"""
-Детектор использования аудиоустройств через анализ загруженных DLL.
-"""
 import psutil
 from typing import Set, List, Optional, Dict, Any
 from utils.helpers import safe_proc_call, is_system_process
@@ -8,38 +5,27 @@ import config
 
 
 class AudioDetector:
-    """Обнаруживает процессы, потенциально использующие микрофон."""
-
     def __init__(self):
         self.audio_pids: Set[int] = set()
         self.audio_processes: List[Dict[str, Any]] = []  # ДОБАВЛЕНО
 
     def scan(self) -> Set[int]:
-        """
-        Сканирует все процессы на наличие аудио-DLL.
-
-        Returns:
-            Множество PID процессов, загрузивших аудио-DLL.
-        """
         self.audio_pids = set()
-        self.audio_processes = []  # ДОБАВЛЕНО: очищаем список
+        self.audio_processes = []
 
         for proc in psutil.process_iter(['pid', 'name']):
             try:
                 pid = proc.info['pid']
                 name = proc.info['name']
 
-                # Пропускаем системные процессы
                 if is_system_process(pid, name):
                     continue
 
-                # Проверяем загруженные DLL
                 found_dlls = self._get_audio_dlls(proc)
 
                 if found_dlls:
                     self.audio_pids.add(pid)
 
-                    # Сохраняем детальную информацию
                     try:
                         exe = safe_proc_call(proc, proc.exe, "unknown")
                     except:
@@ -58,15 +44,6 @@ class AudioDetector:
         return self.audio_pids
 
     def _get_audio_dlls(self, proc: psutil.Process) -> List[str]:
-        """
-        Возвращает список аудио-DLL, загруженных в процесс.
-
-        Args:
-            proc: объект процесса
-
-        Returns:
-            Список найденных DLL (пустой, если ничего не найдено)
-        """
         found_dlls = []
 
         try:
@@ -91,15 +68,6 @@ class AudioDetector:
         return found_dlls
 
     def check_specific_pid(self, pid: int) -> bool:
-        """
-        Проверяет конкретный PID на наличие аудио-DLL.
-
-        Args:
-            pid: идентификатор процесса
-
-        Returns:
-            True, если процесс использует аудио-DLL
-        """
         try:
             proc = psutil.Process(pid)
             return len(self._get_audio_dlls(proc)) > 0
@@ -107,20 +75,10 @@ class AudioDetector:
             return False
 
     def get_process_info(self, pid: int) -> Optional[Dict[str, Any]]:
-        """
-        Возвращает детальную информацию о процессе с аудио.
-
-        Args:
-            pid: идентификатор процесса
-
-        Returns:
-            Словарь с информацией или None
-        """
         for proc_info in self.audio_processes:
             if proc_info['pid'] == pid:
                 return proc_info
         return None
 
     def get_all_audio_processes(self) -> List[Dict[str, Any]]:
-        """Возвращает список всех процессов, использующих аудио."""
         return self.audio_processes
