@@ -55,5 +55,5 @@ ShadowTrace использует трёхэтапный анализ:
 
 ### 1. Клонирование репозитория
 ```bash
-git clone https://github.com/yourusername/ShadowTrace.git
+git clone https://github.com/Fuz483/ShadowTrace.git
 cd ShadowTrace
