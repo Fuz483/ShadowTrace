@@ -182,7 +182,7 @@ class ShadowTraceGUI:
 
         self.info_label = ctk.CTkLabel(
             footer_frame,
-            text="Запустите от имени Администратора для полного доступа",
+            text="Запустите от имени Администратора для полного доступа\n#КиберПраво",
             font=ctk.CTkFont(size=11),
             text_color="gray"
         )

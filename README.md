@@ -46,14 +46,8 @@ ShadowTrace использует трёхэтапный анализ:
 
 ---
 
-## 📦 Установка
+## Использование
+### Запустите файл ShadowTrace.exe
 
-### Требования
-- Python 3.8 или выше
-- Windows 10/11 или Linux
-- **Права администратора/root** (для полного доступа)
-
-### 1. Клонирование репозитория
-```bash
-git clone https://github.com/Fuz483/ShadowTrace.git
-cd ShadowTrace
+## GitHub
+### https://github.com/Fuz483/ShadowTrace
